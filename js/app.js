@@ -291,17 +291,48 @@ async function refrescarDashboardYAlertas() {
     const containerRecs = document.getElementById('lista-recordatorios');
     containerRecs.innerHTML = '';
     
+    // Obtenemos la fecha de hoy limpia (sin horas) para calcular bien los días
+    const hoyClean = new Date();
+    hoyClean.setHours(0,0,0,0);
+    
     recordatorios.forEach(r => {
+        let botonAccion = '';
+        let estiloAlertaPronto = '';
+        let etiquetaPronto = '';
+
+        if (!r.finalizado) {
+            botonAccion = `<button class="btn btn-sm btn-primary" onclick="finalizarTarea('${r.id}')">Resolver</button>`;
+            
+            // --- CÁLCULO DE DÍAS RESTANTES ---
+            const fechaAlerta = new Date(r.fecha_alerta + 'T00:00:00'); // Evita desfases de zona horaria
+            const diferenciaTiempo = fechaAlerta - hoyClean;
+            const diasRestantes = Math.ceil(diferenciaTiempo / (1000 * 60 * 60 * 24));
+
+            // Si faltan 2 días o menos (o si ya está vencida)
+            if (diasRestantes <= 2) {
+                estiloAlertaPronto = 'background: #fef2f2; border-left: 4px solid #ef4444;'; // Fondo rojizo suave con borde rojo
+                etiquetaPronto = `<span style="background: #ef4444; color: white; padding: 2px 6px; border-radius: 4px; font-size: 0.7rem; font-weight: bold; margin-bottom: 0.25rem; display: inline-block;">⚠️ ¡PRONTO! (${diasRestantes >= 0 ? 'Faltan ' + diasRestantes + ' días' : 'VENCIDO'})</span><br>`;
+            }
+        } else {
+            // SI ESTÁ TACHADO: Mostramos el botón rojo de eliminar
+            botonAccion = `
+                <button class="btn btn-sm btn-danger" style="padding: 4px 8px;" onclick="eliminarRecordatorio('${r.id}')">
+                    <i data-lucide="trash-2" style="width:14px; height:14px;"></i> Borrar
+                </button>
+            `;
+        }
+
         containerRecs.innerHTML += `
-            <div class="pendiente-row ${r.finalizado ? 'done' : ''}">
+            <div class="pendiente-row ${r.finalizado ? 'done' : ''}" style="${estiloAlertaPronto}">
                 <div class="pendiente-left">
                     <i data-lucide="${r.finalizado ? 'check-circle' : 'circle'}" class="${r.finalizado ? 'text-success' : 'text-muted'}"></i>
                     <div>
+                        ${etiquetaPronto}
                         <p class="pendiente-desc" style="${r.finalizado ? 'text-decoration: line-through;' : ''}">${r.descripcion}</p>
                         <p class="pendiente-date">📅 Alerta: ${r.fecha_alerta}</p>
                     </div>
                 </div>
-                ${!r.finalizado ? `<button class="btn btn-sm btn-primary" onclick="finalizarTarea('${r.id}')">Resolver</button>` : '<span>Finalizado</span>'}
+                ${botonAccion}
             </div>
         `;
     });
@@ -487,4 +518,17 @@ async function eliminarAbono(abonoId, clienteId, monto) {
 function enviarWhatsApp(nombre, telefono, saldo) {
     const mensaje = `hola! ${nombre} te saluda zarkvision, pasamos por aqui para recordarte el abono de tus gafas, puedes hacerlo en efectivo, nequi o bancolombia, comentanos que metodo de pago te gustaria usar?`;
     window.open(`https://wa.me/${telefono}?text=${encodeURIComponent(mensaje)}`, '_blank');
+}
+async function eliminarRecordatorio(id) {
+    if (confirm("¿Estás seguro de que deseas eliminar este recordatorio del historial?")) {
+        try {
+            const { error } = await supabase.from('recordatorios_optica').delete().eq('id', id);
+            if (error) throw error;
+            
+            // Recargamos la interfaz para que desaparezca de inmediato
+            await refrescarDashboardYAlertas();
+        } catch (err) {
+            alert("No se pudo eliminar el recordatorio: " + err.message);
+        }
+    }
 }
