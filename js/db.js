@@ -39,8 +39,15 @@ const DB = {
         if (error) throw error;
         return data;
     },
-    async guardarAbono(clienteId, monto) {
-        const { data, error } = await supabase.from('abonos_clientes').insert([{ cliente_id: clienteId, monto: parseFloat(monto) }]);
+    async guardarAbono(clienteId, monto, metodo) {
+        const { data, error } = await supabase
+            .from('abonos_clientes')
+            .insert([{ 
+                cliente_id: clienteId, 
+                monto: parseFloat(monto),
+                metodo_pago: metodo // <--- Guarda el método seleccionado (Efectivo, Nequi, etc.)
+            }]);
+            
         if (error) throw error;
         return data;
     },

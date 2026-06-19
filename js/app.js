@@ -138,12 +138,16 @@ function setupFormListeners() {
         } catch (err) { alert("Error: " + err.message); }
     });
 
-    document.getElementById('form-abono').addEventListener('submit', async (e) => {
+   document.getElementById('form-abono').addEventListener('submit', async (e) => {
         e.preventDefault();
         const id = document.getElementById('abono-cliente-id').value;
         const monto = obtenerValorNumerico('abono-monto'); // Lee el abono sin los puntos
+        const metodo = document.getElementById('abono-metodo').value; // <--- CAPTURA EL MÉTODO SELECCIONADO
+
         try {
-            await DB.guardarAbono(id, monto);
+            // Se lo mandamos a la función encargada de guardar en Supabase
+            await DB.guardarAbono(id, monto, metodo); 
+            
             document.getElementById('form-abono').reset();
             await abrirModalAbonosYHistorial(id); 
             await cargarClientesDeBrigada(brigadaSeleccionadaId);
