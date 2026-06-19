@@ -1,0 +1,4 @@
+const SUPABASE_URL = "https://ovhcswzndskwklvtedow.supabase.co";
+const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im92aGNzd3puZHNrd2tsdnRlZG93Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE2MzM3MTAsImV4cCI6MjA5NzIwOTcxMH0.0q4RbQejiFEp828OrhItX43L_ky9Nz2hAHlxBfcvz4I";
+
+const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);

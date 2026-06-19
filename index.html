@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ZarkVision Pro - Gestión Óptica</title>
+    <link rel="stylesheet" href="css/styles.css">
+    <script src="https://unpkg.com/lucide@latest"></script>
+</head>
+<body>
+
+    <button class="mobile-toggle" onclick="toggleSidebar()"><i data-lucide="menu"></i></button>
+
+    <div class="app-layout">
+        <aside class="sidebar" id="app-sidebar">
+            <div class="sidebar-header">
+                <span class="brand-logo"><i data-lucide="eye"></i> ZarkVision</span>
+                <button class="close-sidebar-btn" onclick="toggleSidebar()">&times;</button>
+            </div>
+            <nav class="sidebar-nav">
+                <a href="#dashboard" class="nav-item active" onclick="switchTab('dashboard')">
+                    <i data-lucide="layout-dashboard"></i> <span>Inicio</span>
+                </a>
+                <a href="#brigadas" class="nav-item" onclick="switchTab('brigadas')">
+                    <i data-lucide="map-pin"></i> <span>Brigadas</span>
+                </a>
+                <a href="#optica" class="nav-item" onclick="switchTab('optica')">
+                    <i data-lucide="bell"></i> <span>Recordatorios Óptica</span>
+                </a>
+            </nav>
+            <div class="sidebar-footer">
+                <p class="user-role">⚡ Administrador</p>
+            </div>
+        </aside>
+
+        <main class="main-content">
+            
+            <section id="tab-dashboard" class="tab-content active">
+                <div class="content-header">
+                    <h2>¡Hola! Bienvenido al Resumen Diario</h2>
+                    <p class="current-date" id="txt-fecha-hoy"></p>
+                </div>
+
+                <div class="dashboard-grid">
+                    <div class="metric-card shadow-sm">
+                        <div class="metric-icon bg-purple-light"><i data-lucide="layers" class="text-purple"></i></div>
+                        <div class="metric-info">
+                            <h3>Total Brigadas</h3>
+                            <p id="dash-total-brigadas">0</p>
+                        </div>
+                    </div>
+                    <div class="metric-card shadow-sm">
+                        <div class="metric-icon bg-blue-light"><i data-lucide="users" class="text-blue"></i></div>
+                        <div class="metric-info">
+                            <h3>Clientes Registrados</h3>
+                            <p id="dash-total-clientes">0</p>
+                        </div>
+                    </div>
+                    <div class="metric-card shadow-sm">
+                        <div class="metric-icon bg-amber-light"><i data-lucide="alert-circle" class="text-amber"></i></div>
+                        <div class="metric-info">
+                            <h3>Alertas de Óptica</h3>
+                            <p id="dash-alertas-optica">0</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="dashboard-sections">
+                    <div class="section-box shadow-sm">
+                        <h3 class="box-title"><i data-lucide="calendar-clock" class="text-purple"></i> Cobros Programados para Hoy</h3>
+                        <div id="lista-alertas-cobro" class="list-container"></div>
+                    </div>
+                </div>
+            </section>
+
+            <section id="tab-brigadas" class="tab-content">
+                <div class="content-header-actions">
+                    <div>
+                        <h2>Historial de Brigadas</h2>
+                        <p class="section-desc">Selecciona o crea una brigada para gestionar sus ventas.</p>
+                    </div>
+                    <button class="btn btn-primary" onclick="openModal('modal-brigada')"><i data-lucide="plus"></i> Nueva Brigada</button>
+                </div>
+
+                <div class="laboratorios-grid" id="grid-brigadas-cards"></div>
+
+                <div id="seccion-clientes-detalle" style="display: none; margin-top: 3rem;">
+                    <hr class="section-divider">
+                    <div class="content-header-actions table-header-flex">
+                        <div>
+                            <h3 id="titulo-brigada-actual" class="sub-title">Clientes de la Brigada</h3>
+                            <div class="search-container shadow-sm">
+                                <i data-lucide="search"></i>
+                                <input type="text" id="buscar-cliente" placeholder="Buscar cliente por nombre..." oninput="filtrarClientesLocalmente()">
+                            </div>
+                        </div>
+                        <button class="btn btn-success" onclick="openModal('modal-cliente')"><i data-lucide="user-plus"></i> Registrar Cliente Gafas</button>
+                    </div>
+
+                    <div class="table-responsive shadow-sm">
+                        <table class="custom-table">
+                            <thead>
+                                <tr>
+                                    <th>Cliente</th>
+                                    <th>Teléfono</th>
+                                    <th>Detalle Financiero</th>
+                                    <th>Días Cobro</th>
+                                    <th>Saldo Pendiente</th>
+                                    <th>Acciones</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tabla-clientes-body"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
+            <section id="tab-optica" class="tab-content">
+                <div class="content-header-actions">
+                    <div>
+                        <h2>Pendientes por Resolver (Óptica)</h2>
+                        <p class="section-desc">Tareas internas y alertas de pagos generales.</p>
+                    </div>
+                    <button class="btn btn-primary" onclick="openModal('modal-recordatorio')"><i data-lucide="bell"></i> Nuevo Recordatorio</button>
+                </div>
+
+                <div class="pendientes-list shadow-sm" id="lista-recordatorios"></div>
+            </section>
+
+        </main>
+    </div>
+
+    <div id="modal-brigada" class="modal">
+        <div class="modal-content modal-small">
+            <span class="close" onclick="closeModal('modal-brigada')">&times;</span>
+            <h3>Registrar Lugar de Brigada</h3>
+            <form id="form-brigada">
+                <div class="form-group">
+                    <label>Nombre del Lugar / Población*</label>
+                    <input type="text" id="b-lugar" placeholder="Ej: Brigada Girón Centro" required>
+                </div>
+                <div class="form-group">
+                    <label>Fecha del Evento</label>
+                    <input type="date" id="b-fecha">
+                </div>
+                <button type="submit" class="btn btn-primary btn-block">Crear Brigada</button>
+            </form>
+        </div>
+    </div>
+
+    <div id="modal-cliente" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeModal('modal-cliente')">&times;</span>
+            <h3>Registrar Venta de Gafas</h3>
+            <form id="form-cliente">
+                <div class="form-group">
+                    <label>Nombre Completo del Cliente*</label>
+                    <input type="text" id="c-nombre" required>
+                </div>
+                <div class="form-group">
+                    <label>Teléfono Celular (WhatsApp)*</label>
+                    <input type="tel" id="c-telefono" placeholder="Ej: 57315XXXXXXX" required>
+                </div>
+                <div class="form-row flex-mobile">
+                    <div class="form-group">
+                        <label>Valor Lente ($)*</label>
+                        <input type="number" id="c-lente" value="0" oninput="calcularTotalCliente()" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Valor Montura ($)*</label>
+                        <input type="number" id="c-montura" value="0" oninput="calcularTotalCliente()" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Valor Extra ($)*</label>
+                        <input type="number" id="c-extra" value="0" oninput="calcularTotalCliente()" required>
+                    </div>
+                </div>
+                <div class="form-row flex-mobile">
+                    <div class="form-group">
+                        <label>Valor Total Ajustado</label>
+                        <input type="text" id="c-total-format" value="$0" readonly class="input-disabled">
+                        <input type="hidden" id="c-total" value="0">
+                    </div>
+                    <div class="form-group">
+                        <label>Abono Inicial (Opcional)</label>
+                        <input type="number" id="c-abono" value="0">
+                    </div>
+                </div>
+                <div class="form-row flex-mobile">
+                    <div class="form-group">
+                        <label>Día de cobro Principal (1 al 31)*</label>
+                        <input type="number" id="c-dia1" min="1" max="31" placeholder="Ej: 5" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Segundo día de cobro (Opcional)</label>
+                        <input type="number" id="c-dia2" min="1" max="31" placeholder="Ej: 20">
+                    </div>
+                </div>
+                <button type="submit" class="btn btn-primary btn-block">Guardar Cliente</button>
+            </form>
+        </div>
+    </div>
+
+    <div id="modal-abonos-historial" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeModal('modal-abonos-historial')">&times;</span>
+            <h3>Historial de Pagos y Abonos</h3>
+            <p id="txt-abono-cliente-nombre" style="font-weight: 600; color: var(--text-muted); margin-bottom: 1rem;"></p>
+            
+            <div style="background: var(--bg); padding: 1rem; border-radius: 0.5rem; margin-bottom: 1.5rem;">
+                <p><strong>Saldo Actual Pendiente:</strong> <span id="txt-abono-saldo-pendiente" style="color: var(--danger); font-weight: bold;">$0</span></p>
+            </div>
+
+            <form id="form-abono" class="form-abono-responsive" style="margin-bottom: 1.5rem; display: flex; gap: 0.5rem; align-items: flex-end;">
+                <input type="hidden" id="abono-cliente-id">
+                <div class="form-group" style="flex: 1; margin-bottom: 0; width: 100%;">
+                    <label>Monto del Nuevo Abono ($)*</label>
+                    <input type="number" id="abono-monto" required>
+                </div>
+                <button type="submit" class="btn btn-success" style="height: 42px;">Ingresar Abono</button>
+            </form>
+
+            <h4>Abonos Realizados anteriormente:</h4>
+            <div class="history-list" id="lista-abonos-historial-items" style="max-height: 200px; overflow-y: auto; margin-top: 0.5rem;"></div>
+        </div>
+    </div>
+
+    <div id="modal-recordatorio" class="modal">
+        <div class="modal-content modal-small">
+            <span class="close" onclick="closeModal('modal-recordatorio')">&times;</span>
+            <h3>Crear Recordatorio</h3>
+            <form id="form-recordatorio">
+                <div class="form-group">
+                    <label>Descripción de la Tarea / Alerta*</label>
+                    <textarea id="r-descripcion" rows="3" placeholder="Ej: Recoger caja de lentes en el terminal" required></textarea>
+                </div>
+                <div class="form-group">
+                    <label>Fecha de Alerta*</label>
+                    <input type="date" id="r-fecha" required>
+                </div>
+                <button type="submit" class="btn btn-primary btn-block">Fijar Alerta</button>
+            </form>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.8/dist/umd/supabase.js"></script>
+    <script src="js/supabase-config.js"></script>
+    <script src="js/db.js"></script>
+    <script src="js/app.js"></script>
+</body>
+</html>

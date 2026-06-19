@@ -1,0 +1,396 @@
+let brigadaSeleccionadaId = null;
+let cacheClientesActuales = [];
+
+document.addEventListener("DOMContentLoaded", () => {
+    lucide.createIcons();
+    const hoy = new Date();
+    document.getElementById('txt-fecha-hoy').innerText = hoy.toLocaleDateString('es-CO', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+    initApp();
+    setupMascarasDinero(); // Activa los puntos automáticos al escribir
+});
+
+// Control del menú responsivo móvil
+function toggleSidebar() {
+    const sidebar = document.getElementById('app-sidebar');
+    sidebar.classList.toggle('open');
+}
+
+function switchTab(tabName) {
+    document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+    document.querySelectorAll('.sidebar-nav .nav-item').forEach(el => el.classList.remove('active'));
+    
+    document.getElementById(`tab-${tabName}`).classList.add('active');
+    document.getElementById('app-sidebar').classList.remove('open');
+}
+
+function openModal(id) { document.getElementById(id).style.display = 'flex'; }
+function closeModal(id) { document.getElementById(id).style.display = 'none'; }
+
+// MODIFICACIÓN DE LA FUNCIÓN DE FORMATO EN js/app.js
+function formatearDinero(numero) {
+    if (!numero) return "$0";
+    
+    // Si el número guardado es pequeño (menor a 100000), 
+    // asumimos que se guardó recortado y lo multiplicamos por 1000
+    let valorCorregido = numero;
+    if (numero < 100000) {
+        valorCorregido = numero * 1000;
+    }
+    
+    return "$" + Math.round(valorCorregido).toLocaleString('es-CO');
+}
+
+// 2. FUNCIÓN PARA PONER PUNTOS AUTOMÁTICOS MIENTRAS ESCRIBES
+function setupMascarasDinero() {
+    // Lista de inputs de dinero en tus modales
+    const inputsDinero = ['c-lente', 'c-montura', 'c-extra', 'c-abono', 'abono-monto'];
+    
+    inputsDinero.forEach(id => {
+        const input = document.getElementById(id);
+        if (input) {
+            // Cambiamos el tipo a 'text' para que permita los puntos visuales
+            input.type = 'text';
+            
+            input.addEventListener('input', (e) => {
+                let val = e.target.value.replace(/\D/g, ''); // Quita lo que no sea número
+                if (val) {
+                    e.target.value = Number(val).toLocaleString('es-CO');
+                } else {
+                    e.target.value = '';
+                }
+                
+                // Si es del formulario de agregar cliente, recalcula el total automáticamente
+                if (id === 'c-lente' || id === 'c-montura' || id === 'c-extra') {
+                    calcularTotalCliente();
+                }
+            });
+        }
+    });
+}
+
+// Obtiene el valor numérico limpio (sin puntos) para guardarlo en Supabase
+function obtenerValorNumerico(id) {
+    const input = document.getElementById(id);
+    if (!input || !input.value) return 0;
+    return parseFloat(input.value.replace(/\./g, '')) || 0;
+}
+
+function calcularTotalCliente() {
+    const lente = obtenerValorNumerico('c-lente');
+    const montura = obtenerValorNumerico('c-montura');
+    const extra = obtenerValorNumerico('c-extra');
+    const total = lente + montura + extra;
+    
+    document.getElementById('c-total').value = total;
+    document.getElementById('c-total-format').value = formatearDinero(total);
+}
+
+async function initApp() {
+    await refrescarDashboardYAlertas();
+    await cargarBrigadasEstiloLaboratorio();
+    setupFormListeners();
+}
+
+function setupFormListeners() {
+    document.getElementById('form-brigada').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const b = {
+            nombre_lugar: document.getElementById('b-lugar').value,
+            fecha_evento: document.getElementById('b-fecha').value || new Date().toISOString().split('T')[0]
+        };
+        try {
+            await DB.guardarBrigada(b);
+            closeModal('modal-brigada');
+            document.getElementById('form-brigada').reset();
+            await initApp();
+        } catch (err) { alert("Error: " + err.message); }
+    });
+
+    document.getElementById('form-cliente').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const total = parseFloat(document.getElementById('c-total').value) || 0;
+        const abonoInicial = obtenerValorNumerico('c-abono');
+        
+        const c = {
+            brigada_id: brigadaSeleccionadaId,
+            nombre: document.getElementById('c-nombre').value,
+            telefono: document.getElementById('c-telefono').value,
+            valor_lente: obtenerValorNumerico('c-lente'),
+            valor_montura: obtenerValorNumerico('c-montura'),
+            valor_extra: obtenerValorNumerico('c-extra'),
+            valor_total: total,
+            valor_abonado: abonoInicial,
+            dia_pago_1: parseInt(document.getElementById('c-dia1').value),
+            dia_pago_2: document.getElementById('c-dia2').value ? parseInt(document.getElementById('c-dia2').value) : null
+        };
+        try {
+            await DB.guardarCliente(c);
+            if(abonoInicial > 0) {
+                const todos = await DB.getClientesPorBrigada(brigadaSeleccionadaId);
+                const guardado = todos.find(item => item.nombre === c.nombre);
+                if(guardado) await supabase.from('abonos_clientes').insert([{ cliente_id: guardado.id, monto: abonoInicial }]);
+            }
+            closeModal('modal-cliente');
+            document.getElementById('form-cliente').reset();
+            document.getElementById('c-total-format').value = "$0";
+            await cargarClientesDeBrigada(brigadaSeleccionadaId);
+            await refrescarDashboardYAlertas();
+        } catch (err) { alert("Error: " + err.message); }
+    });
+
+    document.getElementById('form-abono').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const id = document.getElementById('abono-cliente-id').value;
+        const monto = obtenerValorNumerico('abono-monto'); // Lee el abono sin los puntos
+        try {
+            await DB.guardarAbono(id, monto);
+            document.getElementById('form-abono').reset();
+            await abrirModalAbonosYHistorial(id); 
+            await cargarClientesDeBrigada(brigadaSeleccionadaId);
+            await refrescarDashboardYAlertas();
+        } catch (err) { alert("Error: " + err.message); }
+    });
+
+    document.getElementById('form-recordatorio').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const rec = {
+            descripcion: document.getElementById('r-descripcion').value,
+            fecha_alerta: document.getElementById('r-fecha').value
+        };
+        try {
+            await DB.guardarRecordatorio(rec);
+            closeModal('modal-recordatorio');
+            document.getElementById('form-recordatorio').reset();
+            await refrescarDashboardYAlertas();
+        } catch (err) { alert("Error: " + err.message); }
+    });
+}
+
+async function refrescarDashboardYAlertas() {
+    const clientes = await DB.getAllClientes();
+    const recordatorios = await DB.getRecordatoriosOptica();
+    const brigadas = await DB.getBrigadas();
+    
+    document.getElementById('dash-total-brigadas').innerText = brigadas.length;
+    document.getElementById('dash-total-clientes').innerText = clientes.length;
+    
+    const pendientesOptica = recordatorios.filter(r => !r.finalizado).length;
+    document.getElementById('dash-alertas-optica').innerText = pendientesOptica;
+    
+    const diaHoy = new Date().getDate();
+    const containerAlertas = document.getElementById('lista-alertas-cobro');
+    containerAlertas.innerHTML = '';
+    
+    let contAlertas = 0;
+    clientes.forEach(c => {
+        const saldo = c.valor_total - c.valor_abonado;
+        if(saldo > 0 && (c.dia_pago_1 === diaHoy || c.dia_pago_2 === diaHoy)) {
+            contAlertas++;
+            containerAlertas.innerHTML += `
+                <div class="pendiente-row shadow-sm" style="background: #fffbeb; border-left: 4px solid #d97706; margin-bottom: 0.5rem; border-radius: 0.5rem;">
+                    <div class="pendiente-left">
+                        <div>
+                            <span class="badge-alert">COBRO HOY</span>
+                            <p class="pendiente-desc" style="margin-top:0.25rem;">${c.nombre}</p>
+                            <p class="pendiente-date">Saldo Pendiente: <strong>${formatearDinero(saldo)}</strong></p>
+                        </div>
+                    </div>
+                    <button class="btn" style="background:#22c55e; color:white;" onclick="enviarWhatsApp('${c.nombre}', '${c.telefono}', ${saldo})">
+                        <i data-lucide="message-circle"></i> Enviar Recordatorio
+                    </button>
+                </div>
+            `;
+        }
+    });
+    
+    if(contAlertas === 0) {
+        containerAlertas.innerHTML = '<p style="color:var(--success); font-weight:500;">✨ No hay cobros programados para el día de hoy.</p>';
+    }
+
+    const containerRecs = document.getElementById('lista-recordatorios');
+    containerRecs.innerHTML = '';
+    
+    recordatorios.forEach(r => {
+        containerRecs.innerHTML += `
+            <div class="pendiente-row ${r.finalizado ? 'done' : ''}">
+                <div class="pendiente-left">
+                    <i data-lucide="${r.finalizado ? 'check-circle' : 'circle'}" class="${r.finalizado ? 'text-success' : 'text-muted'}"></i>
+                    <div>
+                        <p class="pendiente-desc" style="${r.finalizado ? 'text-decoration: line-through;' : ''}">${r.descripcion}</p>
+                        <p class="pendiente-date">📅 Alerta: ${r.fecha_alerta}</p>
+                    </div>
+                </div>
+                ${!r.finalizado ? `<button class="btn btn-sm btn-primary" onclick="finalizarTarea('${r.id}')">Resolver</button>` : '<span>Finalizado</span>'}
+            </div>
+        `;
+    });
+    lucide.createIcons();
+}
+
+async function finalizarTarea(id) {
+    await DB.marcarRecordatorioFinalizado(id);
+    await refrescarDashboardYAlertas();
+}
+
+async function cargarBrigadasEstiloLaboratorio() {
+    const grid = document.getElementById('grid-brigadas-cards');
+    grid.innerHTML = '';
+    const brigadas = await DB.getBrigadas();
+    const todosClientes = await DB.getAllClientes();
+    
+    brigadas.forEach(b => {
+        const clientesDeEsta = todosClientes.filter(c => c.brigada_id === b.id);
+        let recaudado = 0;
+        let totalVendido = 0;
+        clientesDeEsta.forEach(c => {
+            recaudado += c.valor_abonado;
+            totalVendido += c.valor_total;
+        });
+        const porCobrar = totalVendido - recaudado;
+        const esSeleccionada = b.id === brigadaSeleccionadaId ? 'selected' : '';
+
+        grid.innerHTML += `
+            <div class="lab-card ${esSeleccionada}" onclick="seleccionarBrigada('${b.id}', '${b.nombre_lugar}')">
+                <div class="lab-header">
+                    <div>
+                        <h4 class="lab-title">${b.nombre_lugar}</h4>
+                        <span class="lab-meta">📅 ${b.fecha_evento}</span>
+                    </div>
+                    <button class="btn btn-sm btn-danger" style="padding: 4px 8px;" onclick="event.stopPropagation(); eliminarBrigada('${b.id}', '${b.nombre_lugar}')">
+                        <i data-lucide="trash-2" style="width:14px; height:14px;"></i>
+                    </button>
+                </div>
+                <div class="lab-body-grid">
+                    <div>
+                        <p class="lab-stat-label">RECAUDADO</p>
+                        <p class="lab-stat-val" style="color:var(--success)">${formatearDinero(recaudado)}</p>
+                    </div>
+                    <div>
+                        <p class="lab-stat-label">POR COBRAR</p>
+                        <p class="lab-stat-val" style="color:var(--danger)">${formatearDinero(porCobrar)}</p>
+                    </div>
+                </div>
+            </div>
+        `;
+    });
+    lucide.createIcons();
+}
+
+// FUNCIÓN PARA ELIMINAR BRIGADA DESDE LA INTERFAZ
+async function eliminarBrigada(id, nombre) {
+    if (confirm(`⚠️ ¿Estás completamente seguro de eliminar la brigada "${nombre}"?\nEsto también podría borrar o desvincular los clientes de esta zona.`)) {
+        try {
+            const { error } = await supabase.from('brigadas').delete().eq('id', id);
+            if (error) throw error;
+            
+            if (brigadaSeleccionadaId === id) {
+                brigadaSeleccionadaId = null;
+                document.getElementById('seccion-clientes-detalle').style.display = 'none';
+            }
+            
+            await initApp();
+        } catch (err) {
+            alert("No se pudo eliminar la brigada: " + err.message);
+        }
+    }
+}
+
+async function seleccionarBrigada(id, nombre) {
+    brigadaSeleccionadaId = id;
+    document.getElementById('seccion-clientes-detalle').style.display = 'block';
+    document.getElementById('titulo-brigada-actual').innerText = `Clientes en: ${nombre}`;
+    await cargarClientesDeBrigada(id);
+    await cargarBrigadasEstiloLaboratorio();
+}
+
+async function cargarClientesDeBrigada(id) {
+    cacheClientesActuales = await DB.getClientesPorBrigada(id);
+    renderizarTablaClientes(cacheClientesActuales);
+}
+
+function renderizarTablaClientes(lista) {
+    const tbody = document.getElementById('tabla-clientes-body');
+    tbody.innerHTML = '';
+    
+    lista.forEach(c => {
+        const saldo = c.valor_total - c.valor_abonado;
+        tbody.innerHTML += `
+            <tr>
+                <td><strong>${c.nombre}</strong></td>
+                <td>${c.telefono}</td>
+                <td>
+                    <span style="font-size:0.85rem; color:var(--text-muted)">Lente: ${formatearDinero(c.valor_lente)} | Montura: ${formatearDinero(c.valor_montura)}</span><br>
+                    <strong>Total:</strong> ${formatearDinero(c.valor_total)}
+                </td>
+                <td>Día ${c.dia_pago_1}${c.dia_pago_2 ? ' y ' + c.dia_pago_2 : ''}</td>
+                <td><strong style="color: ${saldo > 0 ? 'var(--danger)' : 'var(--success)'}">${formatearDinero(saldo)}</strong></td>
+                <td>
+                    <div style="display:flex; gap:0.25rem;">
+                        <button class="btn btn-sm btn-primary" onclick="abrirModalAbonosYHistorial('${c.id}')"><i data-lucide="wallet"></i> Pagos</button>
+                        ${saldo > 0 ? `<button class="btn btn-sm" style="background:#22c55e; color:white;" onclick="enviarWhatsApp('${c.nombre}','${c.telefono}',${saldo})"><i data-lucide="message-square"></i> Cobro</button>` : ''}
+                        <button class="btn btn-sm btn-danger" onclick="eliminarCliente('${c.id}')"><i data-lucide="trash-2"></i></button>
+                    </div>
+                </td>
+            </tr>
+        `;
+    });
+    lucide.createIcons();
+}
+
+function filtrarClientesLocalmente() {
+    const busqueda = document.getElementById('buscar-cliente').value.toLowerCase();
+    const filtrados = cacheClientesActuales.filter(c => c.nombre.toLowerCase().includes(busqueda));
+    renderizarTablaClientes(filtrados);
+}
+
+async function abrirModalAbonosYHistorial(clienteId) {
+    const cliente = cacheClientesActuales.find(item => item.id === clienteId);
+    if(!cliente) return;
+    
+    document.getElementById('abono-cliente-id').value = clienteId;
+    document.getElementById('txt-abono-cliente-nombre').innerText = `Cliente: ${cliente.nombre}`;
+    
+    const saldo = cliente.valor_total - cliente.valor_abonado;
+    document.getElementById('txt-abono-saldo-pendiente').innerText = formatearDinero(saldo);
+    
+    const abonos = await DB.getAbonosDeCliente(clienteId);
+    const container = document.getElementById('lista-abonos-historial-items');
+    container.innerHTML = '';
+    
+    abonos.forEach(a => {
+        const fechaFormat = new Date(a.fecha).toLocaleDateString('es-CO');
+        container.innerHTML += `
+            <div class="history-item">
+                <div>
+                    <strong>${formatearDinero(a.monto)}</strong>
+                    <span style="font-size:0.8rem; color:var(--text-muted); margin-left:0.5rem;">📅 ${fechaFormat}</span>
+                </div>
+                <button class="btn btn-sm btn-danger" style="padding:2px 6px;" onclick="eliminarAbono('${a.id}', '${clienteId}', ${a.monto})">✕</button>
+            </div>
+        `;
+    });
+    
+    openModal('modal-abonos-historial');
+}
+
+async function eliminarCliente(id) {
+    if(confirm("⚠ ¿Estás seguro de eliminar este cliente? Se borrará todo su historial financiero.")) {
+        await DB.eliminarCliente(id);
+        await cargarClientesDeBrigada(brigadaSeleccionadaId);
+        await refrescarDashboardYAlertas();
+    }
+}
+
+async function eliminarAbono(abonoId, clienteId, monto) {
+    if(confirm(`¿Deseas eliminar este abono de ${formatearDinero(monto)}?`)) {
+        await DB.eliminarAbono(abonoId, clienteId, monto);
+        closeModal('modal-abonos-historial');
+        await cargarClientesDeBrigada(brigadaSeleccionadaId);
+        await refrescarDashboardYAlertas();
+    }
+}
+
+function enviarWhatsApp(nombre, telefono, saldo) {
+    const mensaje = `hola! ${nombre} te saluda zarkvision, pasamos por aqui para recordarte el abono de tus gafas, puedes hacerlo en efectivo, nequi o bancolombia, comentanos que metodo de pago te gustaria usar?`;
+    window.open(`https://wa.me/${telefono}?text=${encodeURIComponent(mensaje)}`, '_blank');
+}
