@@ -163,33 +163,35 @@ function setupFormListeners() {
         };
 
         try {
-            await DB.guardarCliente(c);
+            // 1. Guardamos el cliente en la base de datos
+            const { data: clienteGuardado, error: errCliente } = await supabase
+                .from('clientes')
+                .insert([c])
+                .select()
+                .single();
+
+            if (errCliente) throw errCliente;
             
-            if (abonoInicial > 0) {
-                const todos = await DB.getClientesPorBrigada(brigadaSeleccionadaId);
-                const guardado = todos.find(item => item.nombre === c.nombre);
-                if (guardado) {
-                    await supabase.from('abonos_clientes').insert([{ 
-                        cliente_id: guardado.id, 
-                        monto: abonoInicial,
-                        metodo_pago: metodoAbono 
-                    }]);
-                }
+            // 2. Si puso un abono inicial, lo registramos de inmediato en el historial de abonos
+            if (abonoInicial > 0 && clienteGuardado) {
+                await supabase.from('abonos_clientes').insert([{ 
+                    cliente_id: clienteGuardado.id, 
+                    monto: abonoInicial,
+                    metodo_pago: metodoAbono,
+                    fecha: new Date().toISOString().split('T')[0] // Registra la fecha de hoy
+                }]);
             }
             
             closeModal('modal-cliente');
             document.getElementById('form-cliente').reset();
             document.getElementById('c-total-format').value = "$0";
+            
+            // Refrescar todo en vivo
             await cargarClientesDeBrigada(brigadaSeleccionadaId);
             await cargarBrigadasEstiloLaboratorio(); 
             await refrescarDashboardYAlertas();
         } catch (err) { 
             alert("Error al guardar cliente: " + err.message); 
-        } finally {
-            if (botonGuardar) {
-                botonGuardar.disabled = false;
-                botonGuardar.innerText = "Guardar Cliente";
-            }
         }
     });
 
@@ -429,18 +431,39 @@ function renderizarTablaClientes(lista) {
     if (!tbody) return;
     tbody.innerHTML = '';
     
-    lista.forEach(c => {
+    // TRUCO MAESTRO: Ordenamos la lista. Los que deben $0 (saldo <= 0) van al final.
+    const listaOrdenada = [...lista].sort((a, b) => {
+        const saldoA = a.valor_total - a.valor_abonado;
+        const saldoB = b.valor_total - b.valor_abonado;
+        
+        const yaPagoA = saldoA <= 0 ? 1 : 0;
+        const yaPagoB = saldoB <= 0 ? 1 : 0;
+        
+        return yaPagoA - yaPagoB; // Si ya pagó, se mueve abajo
+    });
+    
+    listaOrdenada.forEach(c => {
         const saldo = c.valor_total - c.valor_abonado;
+        const yaPago = saldo <= 0;
+        
+        // Si ya pagó, fila verde suave. Si no, fondo blanco normal.
+        const estiloFila = yaPago 
+            ? 'background-color: #f0fdf4; border-left: 4px solid #16a34a;' 
+            : '';
+
         tbody.innerHTML += `
-            <tr>
-                <td><strong>${c.nombre}</strong></td>
+            <tr style="${estiloFila}">
+                <td>
+                    <strong>${c.nombre}</strong>
+                    ${yaPago ? '<br><span style="background:#16a34a; color:white; padding:2px 6px; border-radius:4px; font-size:0.7rem; font-weight:bold;">¡PAGADO! ✨</span>' : ''}
+                </td>
                 <td>${c.telefono}</td>
                 <td>
                     <span style="font-size:0.85rem; color:var(--text-muted)">Lente: ${formatearDinero(c.valor_lente)} | Montura: ${formatearDinero(c.valor_montura)}</span><br>
                     <strong>Total:</strong> ${formatearDinero(c.valor_total)}
                 </td>
                 <td>Día ${c.dia_pago_1}${c.dia_pago_2 ? ' y ' + c.dia_pago_2 : ''}</td>
-                <td><strong style="color: ${saldo > 0 ? 'var(--danger)' : 'var(--success)'}">${formatearDinero(saldo)}</strong></td>
+                <td><strong style="color: ${yaPago ? 'var(--success)' : 'var(--danger)'}">${formatearDinero(saldo)}</strong></td>
                 <td>
                     <div style="display:flex; gap:0.25rem;">
                         <button class="btn btn-sm btn-primary" onclick="abrirModalAbonosYHistorial('${c.id}')"><i data-lucide="wallet"></i> Pagos</button>
