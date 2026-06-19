@@ -26,32 +26,28 @@ function switchTab(tabName) {
 function openModal(id) { document.getElementById(id).style.display = 'flex'; }
 function closeModal(id) { document.getElementById(id).style.display = 'none'; }
 
-// MODIFICACIÓN DE LA FUNCIÓN DE FORMATO EN js/app.js
+// FUNCIÓN DE FORMATO EN DINERO
 function formatearDinero(numero) {
     if (!numero) return "$0";
     return "$" + Math.round(numero).toLocaleString('es-CO');
 }
 
-// 2. FUNCIÓN PARA PONER PUNTOS AUTOMÁTICOS MIENTRAS ESCRIBES
+// FUNCIÓN PARA PONER PUNTOS AUTOMÁTICOS MIENTRAS ESCRIBES
 function setupMascarasDinero() {
-    // Lista de inputs de dinero en tus modales
     const inputsDinero = ['c-lente', 'c-montura', 'c-extra', 'c-abono', 'abono-monto'];
     
     inputsDinero.forEach(id => {
         const input = document.getElementById(id);
         if (input) {
-            // Cambiamos el tipo a 'text' para que permita los puntos visuales
             input.type = 'text';
-            
             input.addEventListener('input', (e) => {
-                let val = e.target.value.replace(/\D/g, ''); // Quita lo que no sea número
+                let val = e.target.value.replace(/\D/g, ''); 
                 if (val) {
                     e.target.value = Number(val).toLocaleString('es-CO');
                 } else {
                     e.target.value = '';
                 }
                 
-                // Si es del formulario de agregar cliente, recalcula el total automáticamente
                 if (id === 'c-lente' || id === 'c-montura' || id === 'c-extra') {
                     calcularTotalCliente();
                 }
@@ -60,7 +56,6 @@ function setupMascarasDinero() {
     });
 }
 
-// Obtiene el valor numérico limpio (sin puntos) para guardarlo en Supabase
 function obtenerValorNumerico(id) {
     const input = document.getElementById(id);
     if (!input || !input.value) return 0;
@@ -82,10 +77,10 @@ async function initApp() {
     await cargarBrigadasEstiloLaboratorio();
     setupFormListeners();
 }
+
 function setupFormListeners() {
     const formBrigada = document.getElementById('form-brigada');
     
-    // TRUCO MAESTRO: Clonar el formulario elimina todos los oídos repetidos del pasado
     const clonFormBrigada = formBrigada.cloneNode(true);
     formBrigada.parentNode.replaceChild(clonFormBrigada, formBrigada);
 
@@ -121,7 +116,7 @@ function setupFormListeners() {
     });
 
     // ==========================================
-    // 2. NUEVO FORMULARIO: ESCUCHA GUARDAR CLIENTE (¡AQUÍ VA!)
+    // 2. ESCUCHA GUARDAR CLIENTE
     // ==========================================
     const formCliente = document.getElementById('form-cliente');
     if (formCliente) {
@@ -173,6 +168,7 @@ function setupFormListeners() {
                 document.getElementById('form-cliente').reset();
                 document.getElementById('c-total-format').value = "$0";
                 await cargarClientesDeBrigada(brigadaSeleccionadaId);
+                await cargarBrigadasEstiloLaboratorio(); // <-- Actualiza la tarjeta al instante
                 await refrescarDashboardYAlertas();
             } catch (err) { 
                 alert("Error al guardar cliente: " + err.message); 
@@ -186,7 +182,7 @@ function setupFormListeners() {
     }
 
     // ==========================================
-    // 3. ESCUCHA GUARDAR ABONO
+    // 3. ESCUCHA GUARDAR ABONO (¡CORREGIDO EN VIVO!)
     // ==========================================
     document.getElementById('form-abono').addEventListener('submit', async (e) => {
         e.preventDefault();
@@ -197,10 +193,17 @@ function setupFormListeners() {
         try {
             await DB.guardarAbono(id, monto, metodo); 
             document.getElementById('form-abono').reset();
-            await abrirModalAbonosYHistorial(id); 
+            
+            // SOLUCIÓN AQUÍ: Forzamos la descarga de datos nuevos para actualizar las vistas de fondo
             await cargarClientesDeBrigada(brigadaSeleccionadaId);
+            await cargarBrigadasEstiloLaboratorio(); 
             await refrescarDashboardYAlertas();
-        } catch (err) { alert("Error: " + err.message); }
+            
+            // Re-ejecutamos la renderización del historial sin cerrar el modal
+            await abrirModalAbonosYHistorial(id); 
+        } catch (err) { 
+            alert("Error: " + err.message); 
+        }
     });
 
     // ==========================================
@@ -220,6 +223,7 @@ function setupFormListeners() {
         } catch (err) { alert("Error: " + err.message); }
     });
 }
+
 async function refrescarDashboardYAlertas() {
     const clientes = await DB.getAllClientes();
     const recordatorios = await DB.getRecordatoriosOptica();
@@ -286,8 +290,11 @@ async function finalizarTarea(id) {
     await refrescarDashboardYAlertas();
 }
 
+// CORREGIDA: AHORA MUESTRA EL NÚMERO DE CLIENTES REALES Y SUMA BIEN LOS VALORES EN VIVO
 async function cargarBrigadasEstiloLaboratorio() {
     const grid = document.getElementById('grid-brigadas-cards');
+    if (!grid) return;
+    
     grid.innerHTML = '';
     const brigadas = await DB.getBrigadas();
     const todosClientes = await DB.getAllClientes();
@@ -296,10 +303,12 @@ async function cargarBrigadasEstiloLaboratorio() {
         const clientesDeEsta = todosClientes.filter(c => c.brigada_id === b.id);
         let recaudado = 0;
         let totalVendido = 0;
+        
         clientesDeEsta.forEach(c => {
-            recaudado += c.valor_abonado;
-            totalVendido += c.valor_total;
+            recaudado += parseFloat(c.valor_abonado || 0);
+            totalVendido += parseFloat(c.valor_total || 0);
         });
+        
         const porCobrar = totalVendido - recaudado;
         const esSeleccionada = b.id === brigadaSeleccionadaId ? 'selected' : '';
 
@@ -307,7 +316,7 @@ async function cargarBrigadasEstiloLaboratorio() {
             <div class="lab-card ${esSeleccionada}" onclick="seleccionarBrigada('${b.id}', '${b.nombre_lugar}')">
                 <div class="lab-header">
                     <div>
-                        <h4 class="lab-title">${b.nombre_lugar}</h4>
+                        <h4 class="lab-title">${b.nombre_lugar} (${clientesDeEsta.length} clnt)</h4>
                         <span class="lab-meta">📅 ${b.fecha_evento}</span>
                     </div>
                     <button class="btn btn-sm btn-danger" style="padding: 4px 8px;" onclick="event.stopPropagation(); eliminarBrigada('${b.id}', '${b.nombre_lugar}')">
@@ -330,7 +339,6 @@ async function cargarBrigadasEstiloLaboratorio() {
     lucide.createIcons();
 }
 
-// FUNCIÓN PARA ELIMINAR BRIGADA DESDE LA INTERFAZ
 async function eliminarBrigada(id, nombre) {
     if (confirm(`⚠️ ¿Estás completamente seguro de eliminar la brigada "${nombre}"?\nEsto también podría borrar o desvincular los clientes de esta zona.`)) {
         try {
@@ -364,6 +372,7 @@ async function cargarClientesDeBrigada(id) {
 
 function renderizarTablaClientes(lista) {
     const tbody = document.getElementById('tabla-clientes-body');
+    if (!tbody) return;
     tbody.innerHTML = '';
     
     lista.forEach(c => {
@@ -397,6 +406,7 @@ function filtrarClientesLocalmente() {
     renderizarTablaClientes(filtrados);
 }
 
+// CORREGIDA: AHORA BUSCA SIEMPRE LOS SALDOS FRESCOS DE CACHÉ AL RE-RENDERIZAR
 async function abrirModalAbonosYHistorial(clienteId) {
     const cliente = cacheClientesActuales.find(item => item.id === clienteId);
     if(!cliente) return;
@@ -413,7 +423,6 @@ async function abrirModalAbonosYHistorial(clienteId) {
     
     abonos.forEach(a => {
         const fechaFormat = new Date(a.fecha || a.created_at).toLocaleDateString('es-CO');
-        // Si el abono viejo no tiene método de pago guardado, por defecto mostrará 'Efectivo'
         const metodoPago = a.metodo_pago || 'Efectivo'; 
         
         container.innerHTML += `
@@ -437,6 +446,7 @@ async function eliminarCliente(id) {
     if(confirm("⚠ ¿Estás seguro de eliminar este cliente? Se borrará todo su historial financiero.")) {
         await DB.eliminarCliente(id);
         await cargarClientesDeBrigada(brigadaSeleccionadaId);
+        await cargarBrigadasEstiloLaboratorio();
         await refrescarDashboardYAlertas();
     }
 }
@@ -446,6 +456,7 @@ async function eliminarAbono(abonoId, clienteId, monto) {
         await DB.eliminarAbono(abonoId, clienteId, monto);
         closeModal('modal-abonos-historial');
         await cargarClientesDeBrigada(brigadaSeleccionadaId);
+        await cargarBrigadasEstiloLaboratorio();
         await refrescarDashboardYAlertas();
     }
 }
