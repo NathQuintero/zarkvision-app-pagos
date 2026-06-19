@@ -84,8 +84,23 @@ async function initApp() {
 }
 
 function setupFormListeners() {
+    const formBrigada = document.getElementById('form-brigada');
+    
+    // TRUCO MAESTRO: Clonar el formulario elimina todos los oídos repetidos del pasado
+    const clonFormBrigada = formBrigada.cloneNode(true);
+    formBrigada.parentNode.replaceChild(clonFormBrigada, formBrigada);
+
+    // Ahora trabajamos sobre el formulario limpio de duplicados
     document.getElementById('form-brigada').addEventListener('submit', async (e) => {
         e.preventDefault();
+        
+        // Desactivamos el botón para mayor seguridad
+        const botonGuardar = e.target.querySelector('button[type="submit"]');
+        if (botonGuardar) {
+            botonGuardar.disabled = true;
+            botonGuardar.innerText = "Guardando...";
+        }
+
         const b = {
             nombre_lugar: document.getElementById('b-lugar').value,
             fecha_evento: document.getElementById('b-fecha').value || new Date().toISOString().split('T')[0]
@@ -95,39 +110,14 @@ function setupFormListeners() {
             closeModal('modal-brigada');
             document.getElementById('form-brigada').reset();
             await initApp();
-        } catch (err) { alert("Error: " + err.message); }
-    });
-
-    document.getElementById('form-cliente').addEventListener('submit', async (e) => {
-        e.preventDefault();
-        const total = parseFloat(document.getElementById('c-total').value) || 0;
-        const abonoInicial = obtenerValorNumerico('c-abono');
-        
-        const c = {
-            brigada_id: brigadaSeleccionadaId,
-            nombre: document.getElementById('c-nombre').value,
-            telefono: document.getElementById('c-telefono').value,
-            valor_lente: obtenerValorNumerico('c-lente'),
-            valor_montura: obtenerValorNumerico('c-montura'),
-            valor_extra: obtenerValorNumerico('c-extra'),
-            valor_total: total,
-            valor_abonado: abonoInicial,
-            dia_pago_1: parseInt(document.getElementById('c-dia1').value),
-            dia_pago_2: document.getElementById('c-dia2').value ? parseInt(document.getElementById('c-dia2').value) : null
-        };
-        try {
-            await DB.guardarCliente(c);
-            if(abonoInicial > 0) {
-                const todos = await DB.getClientesPorBrigada(brigadaSeleccionadaId);
-                const guardado = todos.find(item => item.nombre === c.nombre);
-                if(guardado) await supabase.from('abonos_clientes').insert([{ cliente_id: guardado.id, monto: abonoInicial }]);
+        } catch (err) { 
+            alert("Error: " + err.message); 
+        } finally {
+            if (botonGuardar) {
+                botonGuardar.disabled = false;
+                botonGuardar.innerText = "Guardar Brigada";
             }
-            closeModal('modal-cliente');
-            document.getElementById('form-cliente').reset();
-            document.getElementById('c-total-format').value = "$0";
-            await cargarClientesDeBrigada(brigadaSeleccionadaId);
-            await refrescarDashboardYAlertas();
-        } catch (err) { alert("Error: " + err.message); }
+        }
     });
 
    document.getElementById('form-abono').addEventListener('submit', async (e) => {
