@@ -82,7 +82,6 @@ async function initApp() {
     await cargarBrigadasEstiloLaboratorio();
     setupFormListeners();
 }
-
 function setupFormListeners() {
     const formBrigada = document.getElementById('form-brigada');
     
@@ -90,11 +89,12 @@ function setupFormListeners() {
     const clonFormBrigada = formBrigada.cloneNode(true);
     formBrigada.parentNode.replaceChild(clonFormBrigada, formBrigada);
 
-    // Ahora trabajamos sobre el formulario limpio de duplicados
+    // ==========================================
+    // 1. ESCUCHA GUARDAR BRIGADA
+    // ==========================================
     document.getElementById('form-brigada').addEventListener('submit', async (e) => {
         e.preventDefault();
         
-        // Desactivamos el botón para mayor seguridad
         const botonGuardar = e.target.querySelector('button[type="submit"]');
         if (botonGuardar) {
             botonGuardar.disabled = true;
@@ -120,16 +120,82 @@ function setupFormListeners() {
         }
     });
 
-   document.getElementById('form-abono').addEventListener('submit', async (e) => {
+    // ==========================================
+    // 2. NUEVO FORMULARIO: ESCUCHA GUARDAR CLIENTE (¡AQUÍ VA!)
+    // ==========================================
+    const formCliente = document.getElementById('form-cliente');
+    if (formCliente) {
+        const clonFormCliente = formCliente.cloneNode(true);
+        formCliente.parentNode.replaceChild(clonFormCliente, formCliente);
+
+        document.getElementById('form-cliente').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const botonGuardar = e.target.querySelector('button[type="submit"]');
+            if (botonGuardar) {
+                botonGuardar.disabled = true;
+                botonGuardar.innerText = "Guardando...";
+            }
+
+            const total = parseFloat(document.getElementById('c-total').value) || 0;
+            const abonoInicial = obtenerValorNumerico('c-abono');
+            const metodoAbono = document.getElementById('c-abono-metodo').value; 
+            
+            const c = {
+                brigada_id: brigadaSeleccionadaId,
+                nombre: document.getElementById('c-nombre').value,
+                telefono: document.getElementById('c-telefono').value,
+                valor_lente: obtenerValorNumerico('c-lente'),
+                valor_montura: obtenerValorNumerico('c-montura'),
+                valor_extra: obtenerValorNumerico('c-extra'),
+                valor_total: total,
+                valor_abonado: abonoInicial,
+                dia_pago_1: parseInt(document.getElementById('c-dia1').value),
+                dia_pago_2: document.getElementById('c-dia2').value ? parseInt(document.getElementById('c-dia2').value) : null
+            };
+
+            try {
+                await DB.guardarCliente(c);
+                
+                if (abonoInicial > 0) {
+                    const todos = await DB.getClientesPorBrigada(brigadaSeleccionadaId);
+                    const guardado = todos.find(item => item.nombre === c.nombre);
+                    if (guardado) {
+                        await supabase.from('abonos_clientes').insert([{ 
+                            cliente_id: guardado.id, 
+                            monto: abonoInicial,
+                            metodo_pago: metodoAbono 
+                        }]);
+                    }
+                }
+                
+                closeModal('modal-cliente');
+                document.getElementById('form-cliente').reset();
+                document.getElementById('c-total-format').value = "$0";
+                await cargarClientesDeBrigada(brigadaSeleccionadaId);
+                await refrescarDashboardYAlertas();
+            } catch (err) { 
+                alert("Error al guardar cliente: " + err.message); 
+            } finally {
+                if (botonGuardar) {
+                    botonGuardar.disabled = false;
+                    botonGuardar.innerText = "Guardar Cliente";
+                }
+            }
+        });
+    }
+
+    // ==========================================
+    // 3. ESCUCHA GUARDAR ABONO
+    // ==========================================
+    document.getElementById('form-abono').addEventListener('submit', async (e) => {
         e.preventDefault();
         const id = document.getElementById('abono-cliente-id').value;
-        const monto = obtenerValorNumerico('abono-monto'); // Lee el abono sin los puntos
-        const metodo = document.getElementById('abono-metodo').value; // <--- CAPTURA EL MÉTODO SELECCIONADO
+        const monto = obtenerValorNumerico('abono-monto'); 
+        const metodo = document.getElementById('abono-metodo').value; 
 
         try {
-            // Se lo mandamos a la función encargada de guardar en Supabase
             await DB.guardarAbono(id, monto, metodo); 
-            
             document.getElementById('form-abono').reset();
             await abrirModalAbonosYHistorial(id); 
             await cargarClientesDeBrigada(brigadaSeleccionadaId);
@@ -137,6 +203,9 @@ function setupFormListeners() {
         } catch (err) { alert("Error: " + err.message); }
     });
 
+    // ==========================================
+    // 4. ESCUCHA GUARDAR RECORDATORIO
+    // ==========================================
     document.getElementById('form-recordatorio').addEventListener('submit', async (e) => {
         e.preventDefault();
         const rec = {
@@ -151,7 +220,6 @@ function setupFormListeners() {
         } catch (err) { alert("Error: " + err.message); }
     });
 }
-
 async function refrescarDashboardYAlertas() {
     const clientes = await DB.getAllClientes();
     const recordatorios = await DB.getRecordatoriosOptica();
