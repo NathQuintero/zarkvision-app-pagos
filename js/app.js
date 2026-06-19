@@ -29,15 +29,7 @@ function closeModal(id) { document.getElementById(id).style.display = 'none'; }
 // MODIFICACIÓN DE LA FUNCIÓN DE FORMATO EN js/app.js
 function formatearDinero(numero) {
     if (!numero) return "$0";
-    
-    // Si el número guardado es pequeño (menor a 100000), 
-    // asumimos que se guardó recortado y lo multiplicamos por 1000
-    let valorCorregido = numero;
-    if (numero < 100000) {
-        valorCorregido = numero * 1000;
-    }
-    
-    return "$" + Math.round(valorCorregido).toLocaleString('es-CO');
+    return "$" + Math.round(numero).toLocaleString('es-CO');
 }
 
 // 2. FUNCIÓN PARA PONER PUNTOS AUTOMÁTICOS MIENTRAS ESCRIBES
@@ -362,11 +354,17 @@ async function abrirModalAbonosYHistorial(clienteId) {
     container.innerHTML = '';
     
     abonos.forEach(a => {
-        const fechaFormat = new Date(a.fecha).toLocaleDateString('es-CO');
+        const fechaFormat = new Date(a.fecha || a.created_at).toLocaleDateString('es-CO');
+        // Si el abono viejo no tiene método de pago guardado, por defecto mostrará 'Efectivo'
+        const metodoPago = a.metodo_pago || 'Efectivo'; 
+        
         container.innerHTML += `
-            <div class="history-item">
+            <div class="history-item" style="display: flex; justify-content: space-between; align-items: center; padding: 0.5rem 0; border-bottom: 1px solid #eee;">
                 <div>
                     <strong>${formatearDinero(a.monto)}</strong>
+                    <span style="background: #e2e8f0; color: #4a5568; padding: 2px 6px; border-radius: 4px; font-size: 0.75rem; margin-left: 0.5rem; font-weight: bold;">
+                        ${metodoPago}
+                    </span>
                     <span style="font-size:0.8rem; color:var(--text-muted); margin-left:0.5rem;">📅 ${fechaFormat}</span>
                 </div>
                 <button class="btn btn-sm btn-danger" style="padding:2px 6px;" onclick="eliminarAbono('${a.id}', '${clienteId}', ${a.monto})">✕</button>
